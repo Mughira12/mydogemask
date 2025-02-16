@@ -23,7 +23,7 @@ import { sendMessage } from '../../scripts/helpers/message';
 const REFRESH_INTERVAL = 10000;
 
 export function ClientConnect({ params, wallet, handleResponse }) {
-  const { origin, originTabId } = params ?? {};
+  const { origin } = params ?? {};
 
   const onRejectConnection = useCallback(() => {
     handleResponse({
@@ -31,7 +31,7 @@ export function ClientConnect({ params, wallet, handleResponse }) {
       toastTitle: 'Connection Failed',
       error: 'Unable to connect to MyDoge',
     });
-  }, [handleResponse, origin, originTabId]);
+  }, [handleResponse, origin]);
 
   const [addressBalances, setAddressBalances] = useState({});
   const [selectedAddressIndex, setSelectedAddressIndex] = useState(0);
@@ -157,6 +157,7 @@ export function ClientConnect({ params, wallet, handleResponse }) {
         selectedAddress={selectedAddress}
         balance={selectedAddressBalance}
         handleResponse={handleResponse}
+        origin={origin}
       />
     </>
   );
@@ -169,6 +170,7 @@ const ConfirmationModal = ({
   selectedAddressIndex,
   balance,
   handleResponse,
+  origin,
 }) => {
   const cancelRef = useRef();
   const onConnect = useCallback(() => {
@@ -182,7 +184,7 @@ const ConfirmationModal = ({
         balance,
       },
     });
-  }, [handleResponse, selectedAddress, selectedAddressIndex, balance]);
+  }, [handleResponse, selectedAddress, selectedAddressIndex, balance, origin]);
 
   return (
     <AlertDialog

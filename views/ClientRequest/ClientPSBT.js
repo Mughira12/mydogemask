@@ -30,11 +30,12 @@ export function ClientPSBT({
   handleResponse,
 }) {
   const {
-    originTabId,
     origin,
     rawTx,
     indexes: indexesParam,
     signOnly,
+    partial,
+    sighashType,
   } = params;
 
   const [psbt, setPsbt] = useState(null);
@@ -50,7 +51,14 @@ export function ClientPSBT({
       sendMessage(
         {
           message: MESSAGE_TYPES.SIGN_PSBT,
-          data: { rawTx, indexes, selectedAddressIndex, feeOnly: true },
+          data: {
+            rawTx,
+            indexes,
+            selectedAddressIndex,
+            feeOnly: true,
+            partial,
+            sighashType,
+          },
         },
         ({ fee }) => {
           console.log('fee', fee);
@@ -65,7 +73,14 @@ export function ClientPSBT({
         description: 'Invalid PSBT',
       });
     }
-  }, [handleFailedTransaction, rawTx, indexes, selectedAddressIndex]);
+  }, [
+    handleFailedTransaction,
+    rawTx,
+    indexes,
+    selectedAddressIndex,
+    partial,
+    sighashType,
+  ]);
 
   useEffect(() => {
     (async () => {
@@ -91,11 +106,20 @@ export function ClientPSBT({
           })
         );
 
+        if (!partial) {
+          // Subtract change output
+          psbt?.txOutputs?.forEach((output) => {
+            if (output.address === connectedClient.address) {
+              amount -= sb.toBitcoin(output.value);
+            }
+          });
+        }
+
         setDogeAmount(amount);
         setInputs(mappedInputs);
       }
     })();
-  }, [psbt, indexes]);
+  }, [connectedClient.address, psbt, indexes, partial, sighashType]);
 
   const outputs = psbt?.txOutputs?.map((output, index) => {
     return {
@@ -141,7 +165,13 @@ export function ClientPSBT({
     sendMessage(
       {
         message: MESSAGE_TYPES.SIGN_PSBT,
-        data: { rawTx, indexes, selectedAddressIndex },
+        data: {
+          rawTx,
+          indexes,
+          selectedAddressIndex,
+          partial,
+          sighashType,
+        },
       },
       ({ rawTx: signedRawTx, fee, amount }) => {
         if (signedRawTx && fee && amount) {
@@ -167,28 +197,24 @@ export function ClientPSBT({
                 }
               }
             );
+          } else if (signedRawTx) {
+            handleResponse({
+              toastMessage: 'Transaction Signed',
+              toastTitle: 'Success',
+              data: { signedRawTx },
+            });
           } else {
-            sendMessage(
-              {
-                message: MESSAGE_TYPES.CLIENT_REQUEST_PSBT_RESPONSE,
-                data: { signedRawTx, originTabId, origin },
-              },
-              () => {
-                Toast.show({
-                  duration: 3000,
-                  render: () => {
-                    return (
-                      <ToastRender
-                        description='Transaction Signed'
-                        status='success'
-                      />
-                    );
-                  },
-                });
-                handleWindowClose();
-              }
-            );
+            handleFailedTransaction({
+              title: 'Error',
+              description: 'Failed to sign transaction.',
+            });
           }
+        } else if (signedRawTx && partial) {
+          handleResponse({
+            toastMessage: 'Psbt Signed',
+            toastTitle: 'Success',
+            data: { signedRawTx },
+          });
         } else {
           handleFailedTransaction({
             title: 'Error',
@@ -204,6 +230,8 @@ export function ClientPSBT({
     handleResponse,
     handleFailedTransaction,
     signOnly,
+    partial,
+    sighashType,
   ]);
 
   const [inputsModalOpen, setInputsModalOpen] = useState(false);

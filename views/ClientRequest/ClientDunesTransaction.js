@@ -5,18 +5,20 @@ import { FaLink } from 'react-icons/fa';
 import { BigButton } from '../../components/Button';
 import { ClientPopupLoading } from '../../components/ClientPopupLoading';
 import { OriginBadge } from '../../components/OriginBadge';
+import { RecipientAddress } from '../../components/RecipientAddress';
 import { WalletAddress } from '../../components/WalletAddress';
 import { MESSAGE_TYPES } from '../../scripts/helpers/constants';
-import { getDRC20Balances } from '../../scripts/helpers/doginals';
+import { getDunesBalances } from '../../scripts/helpers/doginals';
 import { sendMessage } from '../../scripts/helpers/message';
+import { validateAddress } from '../../scripts/helpers/wallet';
 
-export function ClientAvailableDRC20Transaction({
+export function ClientDunesTransaction({
   params,
   connectedClient,
   connectedAddressIndex,
   handleResponse,
 }) {
-  const { origin, ticker, amount } = params ?? {};
+  const { origin, ticker, amount, recipientAddress } = params ?? {};
 
   const [confirmationModalOpen, setConfirmationModalOpen] = useState(false);
   const onCloseModal = useCallback(() => {
@@ -39,16 +41,25 @@ export function ClientAvailableDRC20Transaction({
   }, [handleResponse, origin]);
 
   useEffect(() => {
-    if (!connectedClient?.address || typeof connectedAddressIndex !== 'number')
-      return;
+    if (!connectedClient?.address) return;
     (async () => {
       setPageLoading(true);
-      const balances = await getDRC20Balances(connectedClient?.address, ticker);
-      const ab = Number(balances[0]?.availableBalance || 0);
+
+      if (!validateAddress(recipientAddress)) {
+        handleResponse({
+          toastMessage: 'Invalid recipient address',
+          toastTitle: 'Error',
+          error: 'Invalid recipient address',
+        });
+        return;
+      }
+
+      const balances = await getDunesBalances(connectedClient?.address, ticker);
+      const { duneId, overallBalance } = balances[0];
+      const ab = Number(overallBalance || 0);
       const amt = Number(amount);
 
       if (ab < amt) {
-        setPageLoading(false);
         handleResponse({
           toastMessage: 'Insufficient balance',
           toastTitle: 'Error',
@@ -59,21 +70,23 @@ export function ClientAvailableDRC20Transaction({
 
       sendMessage(
         {
-          message: MESSAGE_TYPES.CREATE_TRANSFER_TRANSACTION,
+          message: MESSAGE_TYPES.CREATE_DUNES_TRANSACTION,
           data: {
             ...params,
+            duneId,
             tokenAmount: amount,
             selectedAddressIndex: connectedAddressIndex,
             walletAddress: connectedClient?.address,
+            recipientAddress,
           },
         },
-        ({ txs, fee }) => {
+        ({ rawTx, fee, amount: txAmount }) => {
           setPageLoading(false);
-          if (txs?.length && fee) {
-            setTransaction({ txs, fee });
+          if (rawTx && fee && txAmount) {
+            setTransaction({ rawTx, fee, amount });
           } else {
             handleResponse({
-              error: 'Unable to create available drc-20 transaction',
+              error: 'Unable to create available dunes transaction',
               toastTitle: 'Error',
               toastMessage: 'Unable to create transaction',
             });
@@ -88,6 +101,7 @@ export function ClientAvailableDRC20Transaction({
     handleResponse,
     params,
     ticker,
+    recipientAddress,
   ]);
 
   if (!transaction)
@@ -110,11 +124,15 @@ export function ClientAvailableDRC20Transaction({
       </Text>
       <WalletAddress address={connectedClient.address} />
       <Text fontSize='lg' pb='10px' textAlign='center' fontWeight='semibold'>
-        Inscribing
+        Sending
       </Text>
-      <Text fontSize='3xl' fontWeight='semibold' pt='6px'>
+      <Text fontSize='xl' fontWeight='semibold' pt='6px'>
         {ticker} {Number(amount).toLocaleString()}
       </Text>
+      <Text fontSize='lg' pb='10px' textAlign='center' fontWeight='semibold'>
+        To
+      </Text>
+      <RecipientAddress address={recipientAddress} />
       <Text fontSize='13px' fontWeight='semibold' pt='6px'>
         Network fee: <Text fontWeight='normal'>Ð{transaction?.fee}</Text>
       </Text>
@@ -133,14 +151,14 @@ export function ClientAvailableDRC20Transaction({
           role='button'
           px='28px'
         >
-          Inscribe
+          Send
         </BigButton>
       </HStack>
       <ConfirmationModal
         showModal={confirmationModalOpen}
         onClose={onCloseModal}
         params={params}
-        txs={transaction?.txs}
+        rawTx={transaction?.rawTx}
         handleResponse={handleResponse}
         origin={origin}
       />
@@ -152,7 +170,7 @@ const ConfirmationModal = ({
   showModal,
   onClose,
   params,
-  txs,
+  rawTx,
   handleResponse,
   origin,
 }) => {
@@ -164,8 +182,8 @@ const ConfirmationModal = ({
     setLoading(true);
     sendMessage(
       {
-        message: MESSAGE_TYPES.SEND_TRANSFER_TRANSACTION,
-        data: { ...params, txs, tokenAmount, ticker },
+        message: MESSAGE_TYPES.SEND_TRANSACTION,
+        data: { ...params, rawTx, tokenAmount, ticker },
       },
       (txId) => {
         setLoading(false);
@@ -177,14 +195,14 @@ const ConfirmationModal = ({
           });
         } else {
           handleResponse({
-            toastMessage: 'Failed to inscribe token transfer',
+            toastMessage: 'Failed to send dunes transaction',
             toastTitle: 'Error',
-            error: 'Failed to inscribe token transfer',
+            error: 'Failed to send dunes transaction',
           });
         }
       }
     );
-  }, [handleResponse, params, ticker, tokenAmount, txs]);
+  }, [handleResponse, params, ticker, tokenAmount, rawTx]);
 
   return (
     <>
@@ -205,7 +223,7 @@ const ConfirmationModal = ({
             <OriginBadge origin={origin} mb='18px' />
             <VStack alignItems='center'>
               <Text textAlign='center'>
-                Confirm transaction to inscribe{'\n'}
+                Confirm transaction to send{'\n'}
                 <Text fontWeight='bold' fontSize='md'>
                   {ticker} {Number(tokenAmount).toLocaleString()}
                 </Text>
